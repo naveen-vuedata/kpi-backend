@@ -179,6 +179,7 @@ class KPICatalog(Base):
     __tablename__ = "kpi_catalog"
 
     kpi_id = Column(Integer, primary_key=True, autoincrement=True)
+    role = Column(String(300), nullable=False)
     kpi_name = Column(String(200), nullable=False)
     category = Column(String(100), nullable=False)
     description = Column(Text)
@@ -342,7 +343,7 @@ class TrainingAttendance(Base):
 # ---------------------------------------------------------
 
 DB_USER = "root"
-DB_PASS = "monisha%40123"
+DB_PASS = "monisha"
 DB_HOST = "localhost"
 DB_NAME = "kpi_platform"
 
@@ -381,10 +382,18 @@ def recreate_schema():
 # SAMPLE DATA GENERATION
 # ---------------------------------------------------------
 
-def generate_sample_data(session):
+def generate_sample_data(
+    session,
+    num_companies=50,
+    num_clients_per_company=100,
+    num_projects=100,
+    num_employees=1500,
+    num_revenue_months=1000,
+    num_time_entries=1000
+):
     # ----- Companies -----
     companies = []
-    for _ in range(4):
+    for _ in range(num_companies):
         c = Company(
             company_name=fake.company(),
             industry=fake.bs(),
@@ -397,7 +406,7 @@ def generate_sample_data(session):
 
     # ----- Company Revenue -----
     for c in companies:
-        for m in range(24):
+        for m in range(num_revenue_months):
             session.add(
                 CompanyRevenue(
                     company_id=c.company_id,
@@ -410,7 +419,7 @@ def generate_sample_data(session):
     # ----- Clients -----
     clients = []
     for c in companies:
-        for _ in range(6):
+        for _ in range(num_clients_per_company):
             cl = Client(
                 company_id=c.company_id,
                 name=fake.company(),
@@ -426,14 +435,13 @@ def generate_sample_data(session):
     category_list = ["Web", "Mobile", "AI/ML", "Cloud"]
     categories = []
     for ct in category_list:
-        cat = ProjectCategory(name=ct, description=f"{ct} projects")
-        categories.append(cat)
+        categories.append(ProjectCategory(name=ct, description=f"{ct} projects"))
     session.add_all(categories)
     session.commit()
 
     # ----- Projects -----
     projects = []
-    for i in range(80):
+    for i in range(num_projects):
         cli = random.choice(clients)
         cat = random.choice(categories)
         comp = random.choice(companies)
@@ -448,7 +456,7 @@ def generate_sample_data(session):
             category_id=cat.category_id,
             start_date=start,
             planned_end_date=planned_end,
-            actual_end_date=(planned_end + timedelta(days=random.randint(-10, 40))),
+            actual_end_date=planned_end + timedelta(days=random.randint(-10, 40)),
             status=random.choice(["Completed", "In Progress"]),
             budget=random.randint(50000, 500000)
         )
@@ -458,17 +466,16 @@ def generate_sample_data(session):
 
     # ----- Project Details -----
     for p in projects:
-        pd = ProjectDetail(
+        session.add(ProjectDetail(
             project_id=p.project_id,
             technology_stack=random.choice(["Python", "Node", "Java", "Go"]),
             methodology=random.choice(["Agile", "Scrum", "Waterfall"])
-        )
-        session.add(pd)
+        ))
     session.commit()
 
     # ----- Employees -----
     employees = []
-    for _ in range(150):
+    for _ in range(num_employees):
         comp = random.choice(companies)
         emp = Employee(
             company_id=comp.company_id,
@@ -483,149 +490,134 @@ def generate_sample_data(session):
 
     # ----- Team Members -----
     for p in projects:
-        sample_team = random.sample(employees, 5)
+        sample_team = random.sample(employees, min(5, len(employees)))
         for emp in sample_team:
-            tm = TeamMember(
+            session.add(TeamMember(
                 project_id=p.project_id,
                 employee_id=emp.employee_id,
                 role_in_project=random.choice(["Dev", "Lead", "QA"]),
                 allocation_percentage=random.randint(20, 100)
-            )
-            session.add(tm)
+            ))
     session.commit()
 
     # ----- Project Goals -----
     for p in projects:
         for _ in range(random.randint(2, 5)):
-            g = ProjectGoal(
+            session.add(ProjectGoal(
                 project_id=p.project_id,
                 title=fake.bs(),
                 description=fake.sentence(),
                 status=random.choice(["Pending", "Completed"])
-            )
-            session.add(g)
+            ))
     session.commit()
 
-    # -------------------------------
-    # NEW TABLES: evenly distributed sample data
-    # -------------------------------
-
-    # Milestones: 2 per project (planned + actual variations)
+    # ----- Milestones -----
     for p in projects:
         for m_idx in range(2):
             planned = p.start_date + timedelta(days=20 * (m_idx + 1))
             actual_offset = random.randint(-5, 10)
-            ms = Milestone(
+            session.add(Milestone(
                 project_id=p.project_id,
                 name=f"{p.name} - Milestone {m_idx+1}",
                 planned_date=planned,
-                actual_date=(planned + timedelta(days=actual_offset)) if random.random() > 0.1 else None,
+                actual_date=planned + timedelta(days=actual_offset),
                 status=random.choice(["Pending", "Completed", "Delayed"])
-            )
-            session.add(ms)
+            ))
     session.commit()
 
-    # Defects: distribute roughly 0-3 defects per project
+    # ----- Defects -----
     for p in projects:
         for _ in range(random.randint(0, 3)):
-            d = Defect(
+            session.add(Defect(
                 project_id=p.project_id,
                 severity=random.choice(["Low", "Medium", "High", "Critical"]),
                 reported_date=p.start_date + timedelta(days=random.randint(1, 40)),
                 reported_by=fake.name(),
                 environment=random.choice(["QA", "UAT", "PROD"]),
                 status=random.choice(["Open", "In Progress", "Closed"]),
-                closed_date=(date.today() if random.random() > 0.5 else None)
-            )
-            session.add(d)
+                closed_date=date.today() if random.random() > 0.5 else None
+            ))
     session.commit()
 
-    # Issues: 0-2 per project
+    # ----- Issues -----
     for p in projects:
         for _ in range(random.randint(0, 2)):
-            it = Issue(
+            session.add(Issue(
                 project_id=p.project_id,
                 issue_type=random.choice(["Blocker", "Task", "Bug", "Query"]),
                 priority=random.choice(["Low", "Medium", "High"]),
                 reported_date=p.start_date + timedelta(days=random.randint(1, 40)),
-                resolved_date=(p.start_date + timedelta(days=random.randint(20, 80))) if random.random() > 0.4 else None,
+                resolved_date=p.start_date + timedelta(days=random.randint(20, 80)) if random.random() > 0.4 else None,
                 reported_by_client=fake.company(),
                 status=random.choice(["Open", "Resolved", "Monitoring"])
-            )
-            session.add(it)
+            ))
     session.commit()
 
-    # TimeEntry: create entries distributing hours fairly among employees across projects
-    # We'll create roughly 3000 time entries distributed across projects & employees
-    num_entries = 3000
-    for i in range(num_entries):
+    # ----- Time Entries -----
+    for i in range(num_time_entries):
         proj = projects[i % len(projects)]
         emp = employees[i % len(employees)]
-        te = TimeEntry(
+
+        session.add(TimeEntry(
             project_id=proj.project_id,
             employee_id=emp.employee_id,
             date=proj.start_date + timedelta(days=random.randint(0, 90)),
             hours=round(random.uniform(1.0, 8.0), 2),
             is_billable=1 if random.random() > 0.2 else 0
-        )
-        session.add(te)
-        # batch commit every 500 for performance
+        ))
+
         if i % 500 == 0 and i > 0:
             session.commit()
     session.commit()
 
-    # ProjectCost: 1-3 costs per project
+    # ----- Project Cost -----
     for p in projects:
         for _ in range(random.randint(1, 3)):
-            pc = ProjectCost(
+            session.add(ProjectCost(
                 project_id=p.project_id,
                 cost_type=random.choice(["labor", "infra", "misc"]),
                 planned_cost=round(random.uniform(1000, 50000), 2),
                 actual_cost=round(random.uniform(500, 60000), 2),
                 recorded_date=p.start_date + timedelta(days=random.randint(0, 120))
-            )
-            session.add(pc)
+            ))
     session.commit()
 
-    # EmployeeExit: create a small number spread across employees (simulate attrition ~5%)
-    exit_count = max(1, int(len(employees) * 0.05))
+    # ----- Employee Exits -----
+    exit_count = max(1, int(num_employees * 0.05))
     exit_sample = random.sample(employees, exit_count)
+
     for emp in exit_sample:
-        ee = EmployeeExit(
+        session.add(EmployeeExit(
             employee_id=emp.employee_id,
             exit_date=date.today() - timedelta(days=random.randint(1, 400)),
             reason=random.choice(["Personal", "Better Offer", "Resignation", "Termination"]),
             is_regretted=1 if random.random() > 0.6 else 0
-        )
-        session.add(ee)
+        ))
     session.commit()
 
-    # HiringPipeline: create a few open/closed positions
-    for i in range(12):
-        hp = HiringPipeline(
+    # ----- Hiring Pipeline -----
+    for _ in range(12):
+        session.add(HiringPipeline(
             position=random.choice(["Software Engineer", "QA Engineer", "Project Manager", "Data Analyst"]),
             department=random.choice(["IT", "HR", "Finance", "Product"]),
             opened_date=date.today() - timedelta(days=random.randint(1, 200)),
-            closed_date=(date.today() - timedelta(days=random.randint(0, 100))) if random.random() > 0.5 else None,
+            closed_date=date.today() - timedelta(days=random.randint(0, 100)) if random.random() > 0.5 else None,
             applicant_name=fake.name(),
-            offer_made_date=(date.today() - timedelta(days=random.randint(0, 60))) if random.random() > 0.6 else None,
-            offer_accepted_date=(date.today() - timedelta(days=random.randint(0, 30))) if random.random() > 0.7 else None,
+            offer_made_date=date.today() - timedelta(days=random.randint(0, 60)) if random.random() > 0.6 else None,
+            offer_accepted_date=date.today() - timedelta(days=random.randint(0, 30)) if random.random() > 0.7 else None,
             status=random.choice(["open", "closed", "hired"])
-        )
-        session.add(hp)
+        ))
     session.commit()
 
-    # TrainingAttendance: assign 1-2 training records per 20 employees to spread equally
+    # ----- Training Attendance -----
     for idx, emp in enumerate(employees):
-        # approx 30% employees have training entries
-        if idx % 3 == 0:
-            ta = TrainingAttendance(
+        if idx % 3 == 0:  # ~30%
+            session.add(TrainingAttendance(
                 employee_id=emp.employee_id,
                 course_name=random.choice(["AWS Basics", "Python Advanced", "Agile Foundations", "Security Awareness"]),
                 assigned_date=date.today() - timedelta(days=random.randint(10, 300)),
-                completed_date=(date.today() - timedelta(days=random.randint(1, 50))) if random.random() > 0.4 else None
-            )
-            session.add(ta)
+                completed_date=date.today() - timedelta(days=random.randint(1, 50)) if random.random() > 0.4 else None
+            ))
     session.commit()
 
 
@@ -634,13 +626,13 @@ def generate_sample_data(session):
 # ---------------------------------------------------------
 
 def insert_kpi_catalog(session):
-
+# role=random.choice - "Project Manager", "Delivery Manager", "HR Manager",
     kpis = [
         # Company-Level KPIs
         ("Total Revenue", "Company",
          "Total revenue for a given year",
          "SELECT SUM(revenue_amount) FROM company_revenue WHERE YEAR(revenue_date) = :year",
-         "company_revenue", "sum", "USD", None),
+         "company_revenue", "sum", "USD", None, "HR Manager"),
 
         ("Revenue Growth Rate", "Company",
          "Year over year revenue growth",
@@ -651,7 +643,7 @@ def insert_kpi_catalog(session):
            (SELECT SUM(revenue_amount) total FROM company_revenue WHERE YEAR(revenue_date)=:year) this_year,
            (SELECT SUM(revenue_amount) total FROM company_revenue WHERE YEAR(revenue_date)=:year-1) last_year
          """,
-         "company_revenue", "percentage", "%", None),
+         "company_revenue", "percentage", "%", None, "HR Manager"),
 
         ("Revenue per Client", "Company",
          "Revenue divided by total active clients",
@@ -660,7 +652,7 @@ def insert_kpi_catalog(session):
          FROM company_revenue r 
          JOIN clients c ON c.company_id = r.company_id
          """,
-         "company_revenue, clients", "ratio", "USD", None),
+         "company_revenue, clients", "ratio", "USD", None, "HR Manager"),
 
         # Project KPIs
         ("On-time Delivery Rate", "Project",
@@ -671,7 +663,7 @@ def insert_kpi_catalog(session):
             / COUNT(*)) * 100 
          FROM projects
          """,
-         "projects", "percentage", "%", 95),
+         "projects", "percentage", "%", 95, "Project Manager"),
 
         ("Goal Completion Rate", "Project",
          "Percentage of goals completed",
@@ -680,7 +672,7 @@ def insert_kpi_catalog(session):
            (SUM(CASE WHEN status='Completed' THEN 1 END) / COUNT(*)) * 100 
          FROM project_goals
          """,
-         "project_goals", "percentage", "%", None),
+         "project_goals", "percentage", "%", None, "Project Manager"),
 
         # New KPIs for the added tables
         ("Average Time per Project (hrs)", "Project",
@@ -688,14 +680,14 @@ def insert_kpi_catalog(session):
          """
          SELECT AVG(hours) FROM time_entry WHERE project_id = :project_id AND is_billable = 1
          """,
-         "time_entry", "average", "hours", None),
+         "time_entry", "average", "hours", None, "Delivery Manager"),
 
         ("Defects per Project", "Project",
          "Average number of defects reported per project",
          """
          SELECT project_id, COUNT(*) AS defect_count FROM defects GROUP BY project_id
          """,
-         "defects", "count", "count", None),
+         "defects", "count", "count", None, "Delivery Manager"),
     ]
 
     for k in kpis:
@@ -708,7 +700,8 @@ def insert_kpi_catalog(session):
                 data_sources=k[4],
                 calculation_type=k[5],
                 unit=k[6],
-                target_value=k[7]
+                target_value=k[7],
+                role=k[8]
             )
         )
     session.commit()
