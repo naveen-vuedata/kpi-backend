@@ -382,14 +382,19 @@ def recreate_schema():
 # SAMPLE DATA GENERATION
 # ---------------------------------------------------------
 
+def random_date_last_50_years():
+    days_in_50_years = 50 * 365  
+    random_days = random.randint(0, days_in_50_years)
+    return date.today() - timedelta(days=random_days)
+
 def generate_sample_data(
     session,
-    num_companies=50,
-    num_clients_per_company=100,
-    num_projects=100,
+    num_companies=1,
+    num_clients_per_company=1000,
+    num_projects=1000,
     num_employees=1500,
-    num_revenue_months=1000,
-    num_time_entries=1000
+    num_revenue_months=10000,
+    num_time_entries=10000
 ):
     # ----- Companies -----
     companies = []
@@ -411,7 +416,7 @@ def generate_sample_data(
                 CompanyRevenue(
                     company_id=c.company_id,
                     revenue_amount=random.randint(50000, 400000),
-                    revenue_date=date.today() - timedelta(days=m * 30)
+                    revenue_date=random_date_last_50_years()
                 )
             )
     session.commit()
@@ -445,12 +450,12 @@ def generate_sample_data(
         cli = random.choice(clients)
         cat = random.choice(categories)
         comp = random.choice(companies)
-        start = date.today() - timedelta(days=random.randint(30, 500))
+        start = random_date_last_50_years()
         planned_end = start + timedelta(days=random.randint(50, 150))
 
         p = Project(
             project_code=f"PRJ{i+1000}",
-            name=f"Project_{i}",
+            name=fake.catch_phrase(),
             client_id=cli.client_id,
             company_id=comp.company_id,
             category_id=cat.category_id,
